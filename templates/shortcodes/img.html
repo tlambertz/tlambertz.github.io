@@ -1,0 +1,26 @@
+{% if maxwidth %}
+    {% set mw = maxwidth %}
+{% else %}
+    {% set mw = 728 %}
+{% endif %}
+{% if maxheight %}
+    {% set mh = maxheight %}
+{% else %}
+    {% set mh = 1000 %}
+{% endif %}
+
+{# see https://github.com/getzola/zola/issues/1037 #}
+{% set imgpath = get_url(path=page.path ~ src) %}
+{% set fsdir = page.relative_path | replace(from="index.md", to="") %}
+{% set fspath = fsdir ~ src %}
+{# set imginfo = get_image_metadata(path=fspath) #}
+
+<figure>
+    <a href="{{ imgpath }}" class="imglink">
+        <img src="{{ resize_image(path=fspath, width=mw, height=mh, op="fit") }}" />
+    </a>
+    {% if caption %}
+    <figcaption>{{ caption | safe }}</figcaption>
+    {% endif %}
+</figure>
+

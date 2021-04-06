@@ -1,0 +1,29 @@
+{% extends "index.html" %}
+
+{% block main %}
+{% set parent = get_section(path=page.ancestors | last) %}
+<article itemscope itemtype="http://schema.org/BlogPosting">
+    <div itemprop="headline">
+        <div class="pagetitle">
+            <a href="{{ parent.path }}">{{ parent.title }}</a> /
+            <h1>{{ page.title }}</h1>
+        </div>
+        <div class="border"></div>
+        <div class="date">
+            <time datetime="{{ page.date | date(format="%Y-%m-%d") }}" itemprop="datePublished">
+                {{ page.date | date(format="%d %b %Y") }}
+            </time>
+            <span>- {{ page.reading_time }} minute read</span>
+        </div>
+    </div>
+    <div itemprop="articleBody">
+        {# replace filter adapted from https://github.com/getzola/zola/issues/681 #}
+        {# this makes all links to base_url relative. Which in turn allows fancy css extenal link marks. #}
+        {{ 
+            page.content
+            | replace(from='<a href="' ~ config.base_url, to='<a href="')
+            | safe
+        }}
+    </div>
+</article>
+{% endblock main %}

@@ -1,0 +1,16 @@
+name = "Th0mas Blog, Dark/Light Themes"
+description = "Partially based on https://github.com/barlog-m/oceanic-zen"
+license = "MIT"
+homepage = ""
+min_version = "0.12.0"
+demo = ""
+
+[extra]
+
+[author]
+name = "Thomas Lambertz"
+homepage = "https://blog.th0m.as"
+
+[original]
+author =  "barlog-m"
+repo = "https://github.com/barlog-m/oceanic-zen"

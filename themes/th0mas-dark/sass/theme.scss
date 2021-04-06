@@ -1,0 +1,387 @@
+@import "colors";
+@import "katex";
+
+$arrow-height: 10px;
+$arrow-angle: 2;
+$arrow-angle-vw: #{$arrow-angle}vw;    // this is in vw (viewport width percent)
+$arrow-top-spacing: 60px;
+$arrow-box-height: 50px; // can cut off arrows at the bottom if too low! eg 60px
+$min-header-height: 110px; // make some space for arrows, which are just drawn in background
+$arrow-opacity: 0.8;
+// THIS IS GOLDEN! (below, minwidth for arrows is hardcoded to 250px)
+$min_width: 400px;
+$padding: 8px;
+
+
+/* System Fonts as used by Medium and WordPress. Taken from https://css-tricks.com/snippets/css/system-font-stack/ */
+//font-family:               -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Oxygen-Sans,Ubuntu,Cantarell,"Helvetica Neue",sans-serif;
+
+/* System FOnts as defined by bootstrap https://github.com/twbs/bootstrap/blob/main/scss/_variables.scss */
+$font-family-sans-serif:      system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji" !default;
+$font-family-monospace:       SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !default;
+
+/*
+:root {
+    --c-black: #{$black};
+}
+
+input:checked,
+input:checked + * {
+    --c-black: #{$white};
+}
+input[type="checkbox"] {
+    //-webkit-appearance: none;
+    outline: 0;
+    position: absolute;
+    z-index: 2;
+    top: 10px;
+    right: 10px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background-image: var(--gradient-style);
+    box-shadow: 0 0 14px var(--gradient-size) var(--gradient-shadow);
+    cursor: pointer;
+  }
+
+// body is special, since darkmode button will always live inside it, so `+ *` cannot change it!
+// dont style body directly, as it always starts before our light/dark mode toggle!
+// style #fakebody instead
+body {
+    margin: 0;
+}*/
+
+body {
+    //width: 100%;
+    //height: 100%;
+
+    font-family: $font-family-sans-serif;
+    font-variant: sans-serif;
+    font-size: 1rem;
+    line-height: 1.3;
+
+    background: $noise-color;
+    color: $white;
+
+    margin: 0px;
+}
+
+header {
+    min-height: $min-header-height;
+}
+
+.header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    //padding: 4px $padding 0 $padding;
+    padding: $padding;
+}
+
+main {
+    padding: 2*$padding;
+}
+
+.sectionheading {
+    font-size: 1.5rem;
+}
+
+footer {
+    color: $gray_light;
+    padding: 0 $padding $padding $padding;
+}
+
+.footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+nav {
+    list-style-type: none;
+}
+
+.nav {
+    display: inline;
+    padding-right: 10px;
+}
+
+ul {
+    list-style: square inside none;
+    padding: 0;
+}
+
+.postlist > li {
+    list-style: none inside none;
+}
+.postlist {
+    font-size: 18px;
+}
+
+li::marker {
+    color: $green4;
+}
+
+ul ul {
+    padding-left: 1em;
+}
+
+/*a {
+    font-size: none;
+    color: $blue;
+    text-decoration: none;
+}*/
+a {
+    cursor: pointer;
+    //color: #{$blue};
+    color: #{$white};
+    text-decoration: none;
+    //border-bottom: 1px solid #{$blue}
+}
+
+// only color links in main section.
+main a {
+    color: #{$green4};
+    text-decoration: none;
+}
+
+a:not(.imglink):hover {
+    background-color: #{$green4};
+    color: #fff
+}
+
+// the not imglink is technically not needed anymore, since i clean up absolutelinks to base_url into relative links.
+main a[href*="://"]:not(.imglink)::after,
+main a[rel*="external"]:not(.imglink) {
+  content: " " url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20class='i-external'%20viewBox='0%200%2032%2032'%20width='14'%20height='14'%20fill='none'%20stroke='%2345AD80'%20stroke-linecap='round'%20stroke-linejoin='round'%20stroke-width='9.38%'%3E%3Cpath%20d='M14%209%20L3%209%203%2029%2023%2029%2023%2018%20M18%204%20L28%204%2028%2014%20M28%204%20L14%2018'/%3E%3C/svg%3E");
+}
+
+// center images in figures
+figure > a > img {
+    display: block;
+    margin: auto;
+}
+
+figure {
+    margin: 10px;
+}
+
+figcaption {
+    border-bottom: #ffffff60 dotted 1px;
+    padding-left: 10px;
+    padding-top: 5px;
+}
+
+
+h1 {
+    font-size: 30px;
+    margin: 5px 0;
+    font-weight: bold;
+}
+
+h2 {
+    font-size: 22px;
+    font-weight: bold;
+}
+
+h3 {
+    font-size: 20px;
+    font-weight: bold;
+}
+
+h4 {
+    font-size: 18px;
+    font-weight: bold;
+}
+
+h5 {
+    font-size: 16px;
+    font-weight: bold;
+}
+
+h6 {
+    font-size: 14px;
+    font-weight: bold;
+}
+
+pre {
+    padding: 1em;
+    margin: 1em;
+    overflow-x: auto;
+}
+
+blockquote {
+    background-color:#{$whitealpha};
+}
+
+:not(pre) > code {
+    font-family: $font-family-monospace;
+    font-size: 16px;
+    background-color:#{$whitealpha2};
+}
+
+/*p > code {
+    font-weight: bold;
+    color: $gray;
+}*/
+
+.logo {
+    font-size: 26px;
+    font-weight: bold;
+}
+
+.date {
+    color: $gray_light;
+    font-size: 14px;
+}
+
+.border {
+    color: $green1; //$gray_dark;
+    margin: 8px 0 8px 0;
+    border-top: 2px dashed;
+}
+
+.notfound {
+    text-align: center;
+}
+
+.icon {
+    display: inline-block;
+    vertical-align: sub;
+    width: 18px;
+    height: 18px;
+}
+
+.content {
+    margin: 0 auto;
+    min-height: 100%; // background column is always to the bottom of scrolling
+    //width: 1000px;
+
+    outline: #{$whitealpha} solid 10px;
+
+    // make background of main column a bit darker to create a visual border
+    //background: rgba(0,0,0,0.2);
+    background: $black;
+
+    max-width: 820px;
+    min-width: $min_width;
+    //padding-left: $padding;
+    //padding-right: $padding;
+}
+
+img {
+    max-width: 100%;
+}
+
+.background-noise {
+    //background-image: url("random.png");
+    background-image: url(data:image/png;base64,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);
+    background-size: 64px*2 64px*2; 
+    opacity: #{$noise-opacity};
+    z-index: -999;
+    position: fixed; // If absolute, only fills out initial view, not when scrolling!
+    width: 100%;
+    height: 100%;
+    top: 0px;
+    left: 0px
+}
+
+:root {
+    // angle at 5 viewport width, so window-size can be corrected for with margin!
+    // the max calc fixes angle for screens < min-width, where vw is wrong to use.
+    --arrow-angle: calc(max(#{$arrow-angle-vw}, #{$arrow-angle} / 100 * #{$min_width}));
+}
+
+// based on http://html-tuts.com/css-arrows-up-down-left-right-triangle/
+.down-arrow {
+	display: block;
+	position: relative;
+    background: var(--color);
+    min-height: $arrow-height;
+	//width: 100%;
+    min-width: $min_width;
+	text-align: center;
+}
+
+.down-arrow:after {
+	content: '';
+	display: block;  
+	position: absolute;
+	left: 0;
+	top: 100%;
+	width: 0;
+    height: 0;
+    // angle at 5 viewport width, so window-size can be corrected for with margin!
+    // the max calc fixes angle for screens < min-width, where vw is wrong to use.
+	//border-top: var(--arrow-angle) solid var(--color);
+    border-top: 20px solid var(--color);
+    // usage of calc here is workaround for incompatibility with scss min/max functions!
+	border-right: 100px solid transparent;
+    //border-right: 50vw solid transparent;
+	border-bottom: 0 solid transparent;
+	border-left: 100px solid transparent;
+    //border-left: 50vw solid transparent;
+}
+.arrows {
+    // same $arrow-angle as in border-top height!.
+    //margin-top: calc(#{$arrow-top-spacing} - var(--arrow-angle) - 200px);
+    padding-top: 20px; // virtually extend box above site, so we never have a color cut off at the top
+    width: 100%;
+    min-height: $arrow-box-height;
+    min-width: calc(#{$min_width} + 2 * #{$padding});
+    //top: 0; // dont specify top, so we are at the correct position in the header!
+    left: 0;
+    // using absolute here requires the workaround of a spacer. But not sure how to "leak" the arrows over the whole page otherwise.
+    // could do something with transforms, but that seems just as bad.
+    //position: absolute;
+    opacity: $arrow-opacity;
+    z-index: -100;
+    overflow: hidden;
+
+    // css is... very special. It introduces empty space between div's based on font size
+    font-size: 0px;
+}
+
+// Colors generated by https://mycolor.space/?hex=%23845EC2&sub=1
+.down-arrow.arrow1 {
+    // First arrow has to be taller
+    margin-top: -1030px;
+    padding-top: 1000px;
+
+}
+.arrow1 {
+  --color: #{$black};
+  z-index: 0
+}
+.arrow2 {
+  --color: #{$green1};
+  z-index: -1;
+}
+.arrow3 {
+  --color: #{$green2};
+  z-index: -2;
+}
+.arrow4 {
+    --color: #{$green3};
+    z-index: -3;
+}
+.arrow5 {
+    --color: #{$green4};
+    z-index: -4;
+}
+
+
+html, body {
+    max-width: 100%;
+
+    // height 100% so content background stretches to bottom of site
+    height: 100%;
+}
+
+td, th {
+    border: 1px solid $white;
+}
+
+table {
+    border-collapse: collapse;
+}

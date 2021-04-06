@@ -1,0 +1,34 @@
+{% extends "index.html" %}
+
+{% block main %}
+    {% if section.pages %}
+        <h1>{{ section.title }}</h1>
+        <div class="border"></div>
+        {{ section.content | safe }}
+        <ul class="postlist">
+        {% for p in section.pages %}
+              {#<li>
+                <a href="{{ p.permalink | safe}}">
+                    {{ p.title }}
+                </a>
+            </li>#}
+            <li>
+                <div class="date" style="display:inline-block; min-width:80px;"> {{ p.date | date }} </div>
+                <a href="{{ p.path | safe}}">
+                    {{ p.title }}
+                </a>
+            </li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <article itemscope itemtype="http://schema.org/BlogPosting">
+            <div itemprop="headline">
+                <h1>{{ section.title }}</h1>
+                <div class="border"></div>
+            </div>
+            <div itemprop="articleBody">
+                {{ section.content | safe }}
+            </div>
+        </article>
+    {% endif %}
+{% endblock main %}

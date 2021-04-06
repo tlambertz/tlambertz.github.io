@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+        {% if config.description -%}
+        <meta name="description" content="{{ config.description }}">
+        {% endif %}
+
+        {% if page %}
+        <title>{{ page.title }} - {{ config.title }}</title>
+        {% else %}
+        <title>{{ config.title }}</title>
+        {% endif %}
+
+        {% if config.generate_feed %}
+        <link rel="alternate" type={% if config.feed_filename == "atom.xml" %}"application/atom+xml"{% else %}"application/rss+xml"{% endif %} title="RSS" href="{{ get_url(path=config.feed_filename) | safe }}">
+        {% endif %}
+
+        <link rel="stylesheet" href="{{ get_url(path="theme.css", trailing_slash=false) | safe }}">
+    </head>
+
+    <body>
+        <div class="content">
+        {% block body%}
+        {% block header %}
+            <header>
+                <div class="header-top">
+                    <div class="header-left">
+                        <a href="{{ config.base_url }}" class="logo">{{ config.title }}</a>
+                    </div>
+                    <div class="header-right">
+                        <nav itemscope itemtype="http://schema.org/SiteNavigationElement">
+                            {% set index = get_section(path="_index.md") %}
+                            {#
+                            {% for s in index.subsections %}
+                                {% set subsection = get_section(path=s) %}
+                                <li class="nav">
+                                    <a itemprop="url" href="{{ subsection.path | safe}}">
+                                        <span itemprop="name">{{ subsection.title }}</span>
+                                    </a>
+                                </li>
+                            {% endfor %}
+                            #}
+                            {% for menu_item in config.extra.main_menu %}
+                                <li class="nav">
+                                    <a itemprop="url" href="{{ get_url(path=menu_item.url)}}">
+                                        <span itemprop="name">{{ menu_item.name }}</span>
+                                    </a>
+                                </li>
+                            {% endfor %}
+                            {% if config.extra.github %}
+                            <li class="nav">
+                                <a itemprop="url" href="https://github.com/{{ config.extra.github }}">
+                                    <img class="icon" src="{{ config.base_url }}/icons/github.svg" alt="Github">
+                                </a>
+                            </li>
+                            {% endif %}
+                            {% if config.extra.twitter %}
+                            <li class="nav">
+                                <a itemprop="url" href="https://twitter.com/{{ config.extra.twitter }}">
+                                    <img class="icon" src="{{ config.base_url }}/icons/twitter.svg" alt="Twitter">
+                                </a>
+                            </li>
+                            {% endif %}
+                            <li class="nav">
+                                <a itemprop="url" href="{{ get_url(path="atom.xml", trailing_slash=false) }}">
+                                    <img class="icon" src="{{ config.base_url }}/icons/rss.svg" alt="RSS">
+                                </a>
+                            </li>
+                            <li class="nav">
+                                {% if page %}
+                                <a itemprop="url" href="{{ config.extra.other_theme_url }}{{ page.path }}">
+                                {% elif section %}
+                                <a itemprop="url" href="{{ config.extra.other_theme_url }}{{ section.path }}">
+                                {% else %}
+                                <a itemprop="url" href="{{ config.extra.other_theme_url }}">
+                                {% endif %}
+                                    ZUP
+                                </a>
+                            </li>
+                        </nav>
+                    </div>
+                </div>
+                <div class="arrows">
+                    <div class="down-arrow arrow1"></div>
+                    <div class="down-arrow arrow2"></div>
+                    <div class="down-arrow arrow3"></div>
+                    <div class="down-arrow arrow4"></div>
+                    <div class="down-arrow arrow5"></div>
+                </div>
+                <div class="header-bottom"></div>
+            </header>
+        {% endblock header %}
+
+
+        {% block content %}
+            <main>
+                {% block main %}
+                <h1>{{ section.title }}</h1>
+                <div class="border"></div>
+                    {{ section.content | safe }}
+                    {% set index = get_section(path="_index.md") %}
+                    <ul>
+                    {% for s in index.subsections %}
+                        {% set subsection = get_section(path=s) %}
+                        
+                        <a class="sectionheading" href="{{ subsection.path | safe}}">
+                            {{ subsection.title }}
+                        </a>
+                        </br>
+                        {{subsection.description}}
+                        {% if subsection.pages %}
+                        <ul class="postlist">
+                            {% for page in subsection.pages %}
+                            <li>
+                            <div class="date" style="display:inline-block; min-width:80px;"> {{ page.date | date }} </div>
+                            <a href="{{ page.path | safe}}">
+                                {{ page.title }}
+                            </a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    </br>
+                    {% endfor %}
+                    </ul>
+                {% endblock main %}
+            </main>
+        {% endblock content %}
+        <footer>
+            <div class="border"></div>
+            <div class="footer">
+                <small class="footer-left">
+                    Copyright &copy; {{ config.extra.author }}
+                </small>
+                <small class="footer-right">
+                    Powered by <a href="https://www.getzola.org">Zola</a>
+                </small>
+            </div>
+        </footer>
+        {% endblock body%}
+        <div class="background-noise"></div>
+    </body>
+</html>

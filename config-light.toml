@@ -1,0 +1,24 @@
+base_url = "https://blog-light.th0m.as"
+
+#build_search_index = true
+
+theme = "th0mas-light"
+
+title = "Th0mas Blog"
+description = "some unrendered description"
+default_language = "en"
+generate_feed = true
+
+highlight_code = true
+highlight_theme = "solarized-light"
+
+[extra]
+author = "Thomas Lambertz"
+github = "tlambertz"
+twitter = "t_lambertz"
+
+main_menu = [
+              {url="/about/", name="About"},
+]
+
+other_theme_url = "http://127.0.0.1:1111"
