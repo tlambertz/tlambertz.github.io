@@ -22,4 +22,5 @@ main_menu = [
               {url="/about/", name="About"},
 ]
 
-other_theme_url = "http://127.0.0.1:1112"
+other_theme_url = "https://blog-light.th0m.as"
+#other_theme_url = "http://127.0.0.1:1112"
