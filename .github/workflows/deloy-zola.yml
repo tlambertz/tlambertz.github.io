@@ -1,0 +1,15 @@
+on: push
+name: Build and deploy on push
+jobs:
+  build:
+    name: tlambertz/zola-deploy-action
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@master
+    - name: tlambertz/zola-deploy-action
+      uses: tlambertz/zola-deploy-action@master
+      env:
+        PAGES_BRANCH: gh-pages
+        BUILD_DIR: build
+        TARGET_REPOSITORY: tlambertz/tlambertz.github.io 
+        TOKEN: ${{ secrets.TOKEN }}
