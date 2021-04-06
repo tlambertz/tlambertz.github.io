@@ -10,6 +10,6 @@ jobs:
       uses: tlambertz/zola-deploy-action@master
       env:
         PAGES_BRANCH: gh-pages
-        BUILD_DIR: build
+        BUILD_DIR: .
         TARGET_REPOSITORY: tlambertz/tlambertz.github.io 
         TOKEN: ${{ secrets.TOKEN }}
