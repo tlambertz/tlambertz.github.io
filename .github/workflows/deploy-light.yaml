@@ -1,5 +1,5 @@
 on: push
-name: Build and deploy on push
+name: Build and deploy on push - LIGHT
 jobs:
   build:
     name: tlambertz/zola-deploy-action
@@ -9,7 +9,8 @@ jobs:
     - name: tlambertz/zola-deploy-action
       uses: tlambertz/zola-deploy-action@master
       env:
-        PAGES_BRANCH: gh-pages
+        PAGES_BRANCH: master
         BUILD_DIR: .
-        TARGET_REPOSITORY: tlambertz/tlambertz.github.io 
+        ZOLA_CONFIG: config-light.toml
+        REPOSITORY: tlambertz/blog-light
         TOKEN: ${{ secrets.TOKEN }}
