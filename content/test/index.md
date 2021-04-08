@@ -9,6 +9,7 @@ date = 2021-03-30
 ### Heading3
 #### Heading4
 
+
 ```rust
 // comment
 pub fn test(a: u64) -> bool {
@@ -47,7 +48,12 @@ this is `some` text with `inline` code.
    - sub item
    - sub item
   
-[A wild link appears!](https://news.ycombinator.com)
+[A wild external link appears!](https://news.ycombinator.com)
+
+[internal link](@/test/index.md)
+
+[Link to heading 3](#heading3)
+
 
 | Tables        | Are           | Cool  |
 | ------------- |:-------------:| -----:|
@@ -58,6 +64,15 @@ this is `some` text with `inline` code.
 
 ---
 
-horizontal rule
+horizontal rules
 
 ---
+
+Some text before an image.
+
+{{ img(src="Lena.png", caption="
+Image caption.
+[Lena](https://en.wikipedia.org/wiki/Lenna).
+") }}
+
+Normal Paragraph after image.

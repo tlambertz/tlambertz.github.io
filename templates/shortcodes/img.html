@@ -20,7 +20,7 @@
         <img src="{{ resize_image(path=fspath, width=mw, height=mh, op="fit") }}" />
     </a>
     {% if caption %}
-    <figcaption>{{ caption | safe }}</figcaption>
+    <figcaption>{{ caption | markdown | safe }}</figcaption>
     {% endif %}
 </figure>
 
