@@ -1,0 +1,12 @@
+{# see https://github.com/getzola/zola/issues/1037 #}
+{% set imgpath = get_url(path=page.path ~ src) %}
+
+<figure>
+    <a href="{{ imgpath }}" class="imglink">
+        <img src="{{ imgpath }}" />
+    </a>
+    {% if caption %}
+    <figcaption>{{ caption | markdown | safe }}</figcaption>
+    {% endif %}
+</figure>
+

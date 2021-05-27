@@ -3,4 +3,4 @@ title = "Index"
 template = "index.html"
 +++
 
-BLOG. WIP. [TEST](@/test/index.md)
+Welcome to a work in progress version of my blog.
