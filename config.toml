@@ -6,7 +6,7 @@ base_url = "https://blog.th0m.as"
 theme = "th0mas-dark"
 
 title = "Th0mas Blog"
-description = "some unrendered description"
+description = "My Blog."
 default_language = "en"
 generate_feed = true
 
