@@ -203,7 +203,7 @@ Wireshark, Overview
 Wireshark, McuGetImage decoded
 ") }}
 
-Unfortunately, Wireshark hardcodes the TLS dissector to TCP, making it impossible to directly decode it in our dissector. It is however possible to send the data 1:1 over TCP/UDP, capture this in a separate pcap, enter the PSK key in the wireshark settings, and then decrypt it.
+Wireshark is even able to show us information about the TLS packets. Unfortunately, it cannot decrypt TLS packets outside of a TCP stream, even if we provide the PSK. This is because TLS is stateful, and Wireshark needs to know which sequence of TLS packets belong together. But there is no API to provide this information, outside of a TCP stream, where packets are strictly ordered. As a workaround it is possible to send the data 1:1 over TCP, capture this in a separate pcap, enter the PSK key in the wireshark settings, and then decrypt it.
 This proved unnecessary though.
 
 ### Debugging Initialization, changing the PSK
