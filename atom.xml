@@ -1,0 +1,414 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en">
+	<title>Th0mas Blog</title>
+	<subtitle>My Blog.</subtitle>
+	<link href="https://blog.th0m.as/atom.xml" rel="self" type="application/atom+xml"/>
+  <link href="https://blog.th0m.as"/>
+	<generator uri="https://www.getzola.org/">Zola</generator>
+	<updated>2021-05-27T00:00:00+00:00</updated>
+	<id>https://blog.th0m.as/atom.xml</id>
+	<entry xml:lang="en">
+		<title>Reversing a Fingerprint Reader Protocol</title>
+		<published>2021-05-27T00:00:00+00:00</published>
+		<updated>2021-05-27T00:00:00+00:00</updated>
+		<link href="https://blog.th0m.as/misc/fingerprint-reversing/" type="text/html"/>
+		<id>https://blog.th0m.as/misc/fingerprint-reversing/</id>
+		<content type="html">&lt;p&gt;TLDR: The sensor uses TLS-PSK over USB. We overwrite the PSK and are able to read images.&lt;&#x2F;p&gt;
+&lt;figure&gt;
+    &lt;a href=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;misc&amp;#x2F;fingerprint-reversing&amp;#x2F;fingerprint_scan.gif&quot; class=&quot;imglink&quot;&gt;
+        &lt;img src=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;misc&amp;#x2F;fingerprint-reversing&amp;#x2F;fingerprint_scan.gif&quot; &#x2F;&gt;
+    &lt;&#x2F;a&gt;
+    
+    &lt;figcaption&gt;&lt;p&gt;Scan of not-my-finger.&lt;&#x2F;p&gt;
+&lt;&#x2F;figcaption&gt;
+    
+&lt;&#x2F;figure&gt;
+&lt;p&gt;I recently got a new Laptop (&lt;code&gt;Lenovo Ideapad 5 - 15are05&lt;&#x2F;code&gt;). Linux compatibility is quite good, as documented in the &lt;a href=&quot;https:&#x2F;&#x2F;wiki.archlinux.org&#x2F;index.php&#x2F;Lenovo_IdeaPad_5_15are05&quot;&gt;Arch Wiki&lt;&#x2F;a&gt;. One part that is not working is the fingerprint reader.
+In this blog post I describe my approach to reverse engineering the fingerprint reader&#x27;s windows driver and USB protocol.
+This results in a python script, capable of streaming images from the sensor at around 15 FPS. Fingerprint recognition, as implemented by for example &lt;a href=&quot;https:&#x2F;&#x2F;fprint.freedesktop.org&#x2F;&quot;&gt;libfprint&lt;&#x2F;a&gt;, is not available yet. More recently, a &lt;a href=&quot;https:&#x2F;&#x2F;gitlab.freedesktop.org&#x2F;libfprint&#x2F;libfprint&#x2F;-&#x2F;issues&#x2F;376#note_906650&quot;&gt;Discord community&lt;&#x2F;a&gt; was formed, with the goal to support all kinds of Goodix devices in libfprint. &lt;&#x2F;p&gt;
+&lt;p&gt;All code can be found in my GitHub Repository &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;tlambertz&#x2F;goodix-fingerprint-reversing&quot;&gt;tlambertz&#x2F;goodix-fingerprint-reversing&lt;&#x2F;a&gt;.&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;contents&quot;&gt;Contents&lt;&#x2F;h2&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;misc&#x2F;fingerprint-reversing&#x2F;#contents&quot;&gt;Contents&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;misc&#x2F;fingerprint-reversing&#x2F;#getting-an-overview-of-the-device&quot;&gt;Getting an overview of the device.&lt;&#x2F;a&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;misc&#x2F;fingerprint-reversing&#x2F;#logging-usb-traffic&quot;&gt;Logging USB traffic&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;misc&#x2F;fingerprint-reversing&#x2F;#windows-driver&quot;&gt;Windows Driver&lt;&#x2F;a&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;misc&#x2F;fingerprint-reversing&#x2F;#finding-the-driver&quot;&gt;Finding the driver&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;misc&#x2F;fingerprint-reversing&#x2F;#another-way-of-finding-all-relevant-driver-files&quot;&gt;Another way of finding all relevant driver files.&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;misc&#x2F;fingerprint-reversing&#x2F;#usermode-driver-framework-umdf&quot;&gt;Usermode Driver Framework (UMDF)&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;misc&#x2F;fingerprint-reversing&#x2F;#debugging-the-driver&quot;&gt;Debugging the Driver&lt;&#x2F;a&gt;
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;misc&#x2F;fingerprint-reversing&#x2F;#the-protocol&quot;&gt;The Protocol&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;misc&#x2F;fingerprint-reversing&#x2F;#creating-a-wireshark-disector&quot;&gt;Creating a Wireshark Disector&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;misc&#x2F;fingerprint-reversing&#x2F;#debugging-initialization-changing-the-psk&quot;&gt;Debugging Initialization, changing the PSK&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;misc&#x2F;fingerprint-reversing&#x2F;#some-notes-on-reversing-the-tls-functions&quot;&gt;Some notes on reversing the TLS functions&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;misc&#x2F;fingerprint-reversing&#x2F;#figuring-out-the-image-format&quot;&gt;Figuring out the Image Format&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;misc&#x2F;fingerprint-reversing&#x2F;#creating-a-python-driver-poc&quot;&gt;Creating a Python Driver PoC&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;li&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;misc&#x2F;fingerprint-reversing&#x2F;#future&quot;&gt;Future&lt;&#x2F;a&gt;&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;h2 id=&quot;getting-an-overview-of-the-device&quot;&gt;Getting an overview of the device.&lt;&#x2F;h2&gt;
+&lt;p&gt;The first step is figuring out what sensor I have. It is USB based, as &lt;code&gt;lsusb&lt;&#x2F;code&gt; shows:&lt;&#x2F;p&gt;
+&lt;pre style=&quot;background-color:#1e1e1e;&quot;&gt;
+&lt;code&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;Bus 003 Device 005: ID 27c6:55a2 Shenzhen Goodix Technology Co.,Ltd. Goodix FingerPrint Device
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;A Goodix sensor with the device id &lt;code&gt;27c6:55a2&lt;&#x2F;code&gt;. As the main driver for fingerprint scanner support on Linux is &lt;code&gt;libfprint&lt;&#x2F;code&gt;, I check there first. Unfortunately, my device is listed on the &lt;a href=&quot;https:&#x2F;&#x2F;gitlab.freedesktop.org&#x2F;libfprint&#x2F;wiki&#x2F;-&#x2F;wikis&#x2F;Unsupported-Devices&quot;&gt;Unsupported Devices List&lt;&#x2F;a&gt;. There is not much other information about this specific product id to be found online.&lt;&#x2F;p&gt;
+&lt;p&gt;I later found a &lt;a href=&quot;https:&#x2F;&#x2F;gitlab.freedesktop.org&#x2F;libfprint&#x2F;libfprint&#x2F;-&#x2F;issues&#x2F;112&quot;&gt;very helpful libfprint issue&lt;&#x2F;a&gt; for a similar device, but only once I had some more keywords to google. @jjjollyjim had already done very similar work, but did not publish his implementation of the protocol. He did however publish a partial  &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;JJJollyjim&#x2F;wireshark-goodix&quot;&gt;wireshark dissector&lt;&#x2F;a&gt;, which came in handy.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;logging-usb-traffic&quot;&gt;Logging USB traffic&lt;&#x2F;h3&gt;
+&lt;p&gt;We know that the reader works with Windows, which therefore has to provide a valid driver for the device. This will be very helpful, as we have an &#x27;easy&#x27; target to reverse engineer. All we need to do is to reproduce what the Windows driver does in Linux. My first hope was that the protocol is simple, so that a basic driver can be implemented just by examining and replaying USB traffic.&lt;&#x2F;p&gt;
+&lt;p&gt;To investigate this, we will observe the interactions between driver and device. One way to do that is using a Windows VM, running with virt-manager on my Linux host. The Goodix USB device is passed through to the VM. This allows me to capture all of the USB traffic in Linux, even early startup packets, with &lt;code&gt;wireshark&lt;&#x2F;code&gt; and the &lt;code&gt;usbmon&lt;&#x2F;code&gt; kernel module.&lt;&#x2F;p&gt;
+&lt;p&gt;The kernel module has to be loaded manually with &lt;code&gt;sudo modprobe usbmon&lt;&#x2F;code&gt;. Each USB bus provides a separate capture device, so wireshark lists multiple (&lt;code&gt;usbmon0, usbmon1, usbmonX&lt;&#x2F;code&gt;). To choose the correct one, look at the bus in the &lt;code&gt;lsusb&lt;&#x2F;code&gt; output. In my case I choose &lt;code&gt;usbmon3&lt;&#x2F;code&gt;.&lt;&#x2F;p&gt;
+&lt;p&gt;We see a lot of data going to and from the device, wrapped in &lt;code&gt;USB_BULK&lt;&#x2F;code&gt; packets. These seem to contain a custom goodix protocol.&lt;&#x2F;p&gt;
+&lt;figure&gt;
+    &lt;a href=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;misc&amp;#x2F;fingerprint-reversing&amp;#x2F;wireshark.png&quot; class=&quot;imglink&quot;&gt;
+        &lt;img src=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;processed_images&amp;#x2F;724395a146e8fa4f00.png&quot; &#x2F;&gt;
+    &lt;&#x2F;a&gt;
+    
+    &lt;figcaption&gt;&lt;p&gt;First Wireshark Capture.&lt;&#x2F;p&gt;
+&lt;&#x2F;figcaption&gt;
+    
+&lt;&#x2F;figure&gt;
+&lt;p&gt;Clicking through the packets, we see some plaintext strings: &lt;code&gt;GF3206_RTSEC_APP_10056&lt;&#x2F;code&gt;, &lt;code&gt;This is the description string&lt;&#x2F;code&gt;, &lt;code&gt;MILAN_RTSEC_IAP_10027&lt;&#x2F;code&gt;, &lt;code&gt;Client_identity&lt;&#x2F;code&gt;.&lt;&#x2F;p&gt;
+&lt;p&gt;By googling these strings, I found a &lt;a href=&quot;https:&#x2F;&#x2F;biometrics.mainguet.org&#x2F;types&#x2F;fingerprint&#x2F;fingerprint_sensors_productsi.htm&quot;&gt;List of Fingerprint Sensor Products&lt;&#x2F;a&gt;, which lists my device as &lt;code&gt;(2015) GF3206: 54x176 pixels @500dpi&lt;&#x2F;code&gt;, but nothing more.&lt;&#x2F;p&gt;
+&lt;p&gt;The first thing I wanted to see, was whether I was able to extract the raw image from the USB capture. If this is possible, the driver is likely quite simple.
+Most packets are too small (&amp;lt;128 bytes) to contain relevant image data. The only bigger packets are exactly 14930 bytes, and are only sent when windows scans a finger. As such they likely contain the wanted image. But looking at their content and entropy, they seem to be entirely random. This means they are either compressed or encrypted. In cases like these, I like to use &lt;a href=&quot;https:&#x2F;&#x2F;gchq.github.io&#x2F;CyberChef&#x2F;&quot;&gt;Cyberchef&#x27;s&lt;&#x2F;a&gt; &lt;code&gt;magic&lt;&#x2F;code&gt; function, which tries common encodings and compressions automatically. It did not cook up anything useful, though.&lt;&#x2F;p&gt;
+&lt;p&gt;The next step is taking a closer look at the driver. As it has to be capable of receiving the image, we &#x27;simply&#x27; have to find the relevant code there and understand what it does.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;windows-driver&quot;&gt;Windows Driver&lt;&#x2F;h3&gt;
+&lt;p&gt;Windows has two different kinds of drivers. Some run in the kernel, some in userspace (see &lt;a href=&quot;https:&#x2F;&#x2F;docs.microsoft.com&#x2F;en-us&#x2F;windows-hardware&#x2F;drivers&#x2F;gettingstarted&#x2F;user-mode-and-kernel-mode&quot;&gt;Windows: User mode and kernel mode&lt;&#x2F;a&gt;). Goodix uses a user mode driver. This is good for us, as debugging a kernel driver would have been really annoying.&lt;&#x2F;p&gt;
+&lt;h4 id=&quot;finding-the-driver&quot;&gt;Finding the driver&lt;&#x2F;h4&gt;
+&lt;p&gt;To get information about the exact driver used by windows, we use the device manager.&lt;&#x2F;p&gt;
+&lt;figure&gt;
+    &lt;a href=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;misc&amp;#x2F;fingerprint-reversing&amp;#x2F;devicemanager.png&quot; class=&quot;imglink&quot;&gt;
+        &lt;img src=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;processed_images&amp;#x2F;704014c3cb1b532c00.png&quot; &#x2F;&gt;
+    &lt;&#x2F;a&gt;
+    
+    &lt;figcaption&gt;&lt;p&gt;Device Manager &#x2F; Goodix &#x2F; Driver Details.&lt;&#x2F;p&gt;
+&lt;&#x2F;figcaption&gt;
+    
+&lt;&#x2F;figure&gt;
+&lt;p&gt;We get a list of many files, not all of them are in use though. I briefly opened some of them with Ghidra, and was surprised that many were similar to each other, just different implementations of the same protocol. As it turns out, this is for compatibility with different host features, like Intel SGX. In my case &lt;code&gt;wbdi.dll&lt;&#x2F;code&gt; contains the code that is actually used for my device.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;code&gt;WUDFRd.sys&lt;&#x2F;code&gt; is the &lt;code&gt;User-mode Driver Framework Reflector&lt;&#x2F;code&gt;, a generic kernel driver used for user-mode drivers, so not specifically relevant here.&lt;&#x2F;p&gt;
+&lt;p&gt;I also used &lt;a href=&quot;https:&#x2F;&#x2F;www.voidtools.com&#x2F;&quot;&gt;Everything&lt;&#x2F;a&gt; (an incredibly fast full-disk file search tool I cannot recommend enough!) to search for &lt;code&gt;Goodix&lt;&#x2F;code&gt;. This revealed a folder with some logs:&lt;&#x2F;p&gt;
+&lt;figure&gt;
+    &lt;a href=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;misc&amp;#x2F;fingerprint-reversing&amp;#x2F;goodixfolder.png&quot; class=&quot;imglink&quot;&gt;
+        &lt;img src=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;processed_images&amp;#x2F;951a5e8a7a2213ce00.png&quot; &#x2F;&gt;
+    &lt;&#x2F;a&gt;
+    
+    &lt;figcaption&gt;&lt;p&gt;Goodix Folder, containing logs. Logs contain lots of encrypted and base64 encoded data.&lt;&#x2F;p&gt;
+&lt;&#x2F;figcaption&gt;
+    
+&lt;&#x2F;figure&gt;
+&lt;p&gt;I then looked for processes which have one of these dll&#x27;s loaded (for example by running &lt;code&gt;tasklist &#x2F;M GoodixEngineAdapter.dll&lt;&#x2F;code&gt;). This turned out to be &lt;code&gt;svchost&lt;&#x2F;code&gt;.
+I also ran Procmon and filtered by goodix. This showed lots of reads and writes to the goodix logfiles by &lt;code&gt;svchost&lt;&#x2F;code&gt;.&lt;&#x2F;p&gt;
+&lt;p&gt;Unfortunately, this was a false lead. The service does actually do some goodix-stuff, but not the low-level device communication I had expected. As I learned, this is instead done via the Usermode Driver Framework in &lt;code&gt;WUDFHost.exe&lt;&#x2F;code&gt;.&lt;&#x2F;p&gt;
+&lt;h4 id=&quot;another-way-of-finding-all-relevant-driver-files&quot;&gt;Another way of finding all relevant driver files.&lt;&#x2F;h4&gt;
+&lt;p&gt;As it turns out, Windows stores device drivers in separate folders in a Driver File Repository. By sorting the &lt;code&gt;FileRepository&lt;&#x2F;code&gt; folder by modification date, we can quickly find newly installed drivers. This has the advantage that all files that belong to the driver are in one place.&lt;&#x2F;p&gt;
+&lt;p&gt;In my case, we can find the goodix driver in &lt;code&gt;C:\Windows\System32\DriverStore\FileRepository\wbdiusb.inf_amd64_d9f7089f2e88d175&lt;&#x2F;code&gt;:&lt;&#x2F;p&gt;
+&lt;figure&gt;
+    &lt;a href=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;misc&amp;#x2F;fingerprint-reversing&amp;#x2F;wbdifolder.png&quot; class=&quot;imglink&quot;&gt;
+        &lt;img src=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;processed_images&amp;#x2F;fb4fb3d11886e8ef00.png&quot; &#x2F;&gt;
+    &lt;&#x2F;a&gt;
+    
+    &lt;figcaption&gt;&lt;p&gt;All Goodix driver files.&lt;&#x2F;p&gt;
+&lt;&#x2F;figcaption&gt;
+    
+&lt;&#x2F;figure&gt;
+&lt;h4 id=&quot;usermode-driver-framework-umdf&quot;&gt;Usermode Driver Framework (UMDF)&lt;&#x2F;h4&gt;
+&lt;p&gt;To understand how usermode drivers work, I found it helpful to read up on how to build one: &lt;a href=&quot;https:&#x2F;&#x2F;docs.microsoft.com&#x2F;en-us&#x2F;windows-hardware&#x2F;drivers&#x2F;usbcon&#x2F;implement-driver-entry-for-a-usb-driver--umdf-&quot;&gt;How to write your first USB client driver (UMDF)&lt;&#x2F;a&gt;. As this post is already quite long, I will only briefly summarize the important parts here.
+Take a look at the following picture:&lt;&#x2F;p&gt;
+&lt;figure&gt;
+    &lt;a href=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;misc&amp;#x2F;fingerprint-reversing&amp;#x2F;UMDF.png&quot; class=&quot;imglink&quot;&gt;
+        &lt;img src=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;processed_images&amp;#x2F;1246b84dd952d38e00.png&quot; &#x2F;&gt;
+    &lt;&#x2F;a&gt;
+    
+    &lt;figcaption&gt;&lt;p&gt;Usermode Driver Framework (UMDF). &lt;a href=&quot;https:&#x2F;&#x2F;docs.microsoft.com&#x2F;en-us&#x2F;windows-hardware&#x2F;drivers&#x2F;usbcon&#x2F;implement-driver-entry-for-a-usb-driver--umdf-&quot;&gt;Microsoft Documentation&lt;&#x2F;a&gt;, CC BY 4.0&lt;&#x2F;p&gt;
+&lt;&#x2F;figcaption&gt;
+    
+&lt;&#x2F;figure&gt;
+&lt;ol&gt;
+&lt;li&gt;When an &lt;code&gt;Application&lt;&#x2F;code&gt; wants to talk to a device, it issues a request to the Kernel via the &lt;code&gt;Windows API&lt;&#x2F;code&gt; (1) &lt;&#x2F;li&gt;
+&lt;li&gt;Kernel redirects request into &lt;code&gt;WUDFHost.exe&lt;&#x2F;code&gt; (2-4) &lt;&#x2F;li&gt;
+&lt;li&gt;UMDF talks to the &lt;code&gt;Client Driver&lt;&#x2F;code&gt;. This is the actual &amp;quot;custom part&amp;quot;, which the vendor implements. (5)&lt;&#x2F;li&gt;
+&lt;li&gt;The driver processes request, creates some responses to send to the device, hands them off to UMDF again&lt;&#x2F;li&gt;
+&lt;li&gt;Actual device interaction happens through &lt;code&gt;Winusb.DLL&lt;&#x2F;code&gt; and the kernel (6-9)&lt;&#x2F;li&gt;
+&lt;&#x2F;ol&gt;
+&lt;p&gt;For us this means that we can debug the &lt;code&gt;WUDFHost.exe&lt;&#x2F;code&gt; process, and capture all relevant parts of the driver-device data parsing!&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;debugging-the-driver&quot;&gt;Debugging the Driver&lt;&#x2F;h2&gt;
+&lt;p&gt;To debug the driver I use the excellent &lt;a href=&quot;https:&#x2F;&#x2F;x64dbg.com&#x2F;&quot;&gt;x64dbg&lt;&#x2F;a&gt;. My first goal was getting a rough overview what is happening. As we already know the driver writes quite a lot of encrypted logs, this was my first target. Finding the logging function in Ghidra is trivial, as almost all functions log something. Creating a breakpoint here allowed me to print all arguments to all log invocations. This had some drawbacks though. First, it was too slow, and the USB connection was timing out, interrupting the normal driver flow. Second, the messages were not formatted yet.&lt;&#x2F;p&gt;
+&lt;p&gt;A closer look at the log function revealed that it has the capability to log to debug via the Windows API &lt;code&gt;OutputDebugStringW&lt;&#x2F;code&gt;. This is normally runtime gated, but a simple &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;tlambertz&#x2F;goodix-fingerprint-reversing&#x2F;tree&#x2F;main&#x2F;patches&quot;&gt;binary patch&lt;&#x2F;a&gt; (applied via x64dbg&#x27;s patching feature) took care of that. Now all driver log messages appear in the x64dbg log window. A full &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;tlambertz&#x2F;goodix-fingerprint-reversing&#x2F;blob&#x2F;main&#x2F;logs&#x2F;3_wbdi_singleunlock.log&quot;&gt;example log&lt;&#x2F;a&gt; is included in my GitHub repo.&lt;&#x2F;p&gt;
+&lt;p&gt;I have not reversed the log encryption, because dumping from the debugger directly was easier. @mpi3d managed to disable encryption by setting some registry keys, which I have not tried to reproduce yet: &lt;a href=&quot;https:&#x2F;&#x2F;gitlab.freedesktop.org&#x2F;libfprint&#x2F;libfprint&#x2F;-&#x2F;issues&#x2F;376#note_876020&quot;&gt;Issue&lt;&#x2F;a&gt;.&lt;&#x2F;p&gt;
+&lt;p&gt;As these logs are incredibly verbose, they proved immensely helpful. They revealed the rough driver flow is as expected:&lt;&#x2F;p&gt;
+&lt;ol&gt;
+&lt;li&gt;query version and firmware, set some config registers&lt;&#x2F;li&gt;
+&lt;li&gt;check if finger is on the sensor&lt;&#x2F;li&gt;
+&lt;li&gt;request an image&lt;&#x2F;li&gt;
+&lt;li&gt;image is sent back&lt;&#x2F;li&gt;
+&lt;&#x2F;ol&gt;
+&lt;p&gt;Creating breakpoints in functions which log interesting strings allowed me to correlate usb messages to log output via timing.&lt;&#x2F;p&gt;
+&lt;p&gt;An example log message looks like&lt;&#x2F;p&gt;
+&lt;pre style=&quot;background-color:#1e1e1e;&quot;&gt;
+&lt;code&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;[pid:  2148][tid:  6316][03-14 07:38:01.287][debug][GxlogicAlgorithm.c][IsNeedRollback          :0123] &amp;gt;&amp;gt; now preoverlay: 0, maxPreoverlayRatio:100\n
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;It includes file, function name and line number. The availability of function names makes reversing much easier. Almost every function has log output, so it&#x27;s almost like we have symbols available.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;the-protocol&quot;&gt;The Protocol&lt;&#x2F;h3&gt;
+&lt;p&gt;The USB protocol used by the goodix sensor is packet based. All communication is initiated by the driver. It sends a command and waits for a response. Each command is ack&#x27;d by the device before sending a response. &lt;&#x2F;p&gt;
+&lt;p&gt;Looking at the log we gathered before, we see a hint as to why the image has so high entropy: &lt;&#x2F;p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;code&gt;Wait For Tls Handshake over&lt;&#x2F;code&gt;.&lt;&#x2F;p&gt;
+&lt;&#x2F;blockquote&gt;
+&lt;p&gt;They are using TLS over USB! TLS is not decryptable with a passive attack. We either need to setup the connection ourselves, or dump the used key. Annoyingly, the TLS setup is done when the driver is loaded, before we are able to attach to the driver to dump logs. In the next section we remidy this. But first, lets examine the non-encrypted part of the protocol a bit.&lt;&#x2F;p&gt;
+&lt;p&gt;Most packets are limited in length to 128 bytes. If a response is longer, it is split into multiple packets. The first one contains the correct length, the later ones have no header at all and contain just data. This makes confident reassembly a bit more complicated.&lt;&#x2F;p&gt;
+&lt;p&gt;The protocol consists of two layers. An outer wrapper, which just contains a packettype, a length and the payload, and the payload itself. The format of the payload depends on the type set in the wrapper. It most often is &lt;code&gt;A0&lt;&#x2F;code&gt;, in which case the payload is a plaintext command:&lt;&#x2F;p&gt;
+&lt;pre style=&quot;background-color:#1e1e1e;&quot;&gt;
+&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#569cd6;&quot;&gt;struct &lt;&#x2F;span&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;wrapperpacket {
+  uint8 packettype;
+  uint16 length;       &lt;&#x2F;span&gt;&lt;span style=&quot;color:#608b4e;&quot;&gt;&#x2F;&#x2F; length of payload without this header
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;  uint8 header_chksum; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#608b4e;&quot;&gt;&#x2F;&#x2F; sum of three previous bytes
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;  uint8 payload[length];
+}
+
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#608b4e;&quot;&gt;&#x2F;&#x2F; Packettype A0. Normal, plaintext packet.
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#569cd6;&quot;&gt;struct &lt;&#x2F;span&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;normalpacket {
+  uint8 cmd;
+  uint16 length;       &lt;&#x2F;span&gt;&lt;span style=&quot;color:#608b4e;&quot;&gt;&#x2F;&#x2F; length of data without this header, including the checksum at the end
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;  uint8 data[length-1];
+  uint8 chksum;        &lt;&#x2F;span&gt;&lt;span style=&quot;color:#608b4e;&quot;&gt;&#x2F;&#x2F; 0xaa - sum(previous bytes)
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;}
+
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#608b4e;&quot;&gt;&#x2F;&#x2F; Packettype B0. Used during TLS handshake
+&#x2F;&#x2F; Packettype B2. Used when sending TLS encrypted image data
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;&lt;h3 id=&quot;creating-a-wireshark-disector&quot;&gt;Creating a Wireshark Disector&lt;&#x2F;h3&gt;
+&lt;p&gt;&lt;code&gt;@jjjollyjim&lt;&#x2F;code&gt; has published an &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;JJJollyjim&#x2F;wireshark-goodix&quot;&gt;wireshark dissector&lt;&#x2F;a&gt; for a similar fingerprint reader, which I took as a baseline. An improved disector can be found &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;tlambertz&#x2F;goodix-fingerprint-reversing&#x2F;blob&#x2F;main&#x2F;wireshark-dissector&#x2F;goodix_message.lua&quot;&gt;in my repo&lt;&#x2F;a&gt;.&lt;&#x2F;p&gt;
+&lt;p&gt;There are two ways to create Wireshark disectors. They can either be compiled, or be written in Lua. While Lua does not have access to the full dissector API, it is often enough and way easier to write and iterate. I found this &lt;a href=&quot;https:&#x2F;&#x2F;false.ekta.is&#x2F;2013&#x2F;11&#x2F;decoding-vendor-specific-usb-protocols-with-wireshark-lua-plugins&#x2F;comment-page-1&#x2F;&quot;&gt;Guide&lt;&#x2F;a&gt; to have some helpful pointers into writing a Lua based USB dissector.&lt;&#x2F;p&gt;
+&lt;p&gt;To install a custom disector, you simply copy it into &lt;code&gt;~&#x2F;.local&#x2F;lib&#x2F;wireshark&#x2F;plugins&#x2F;3.4&lt;&#x2F;code&gt;. During development, the shortcut &lt;code&gt;Strg+Shift+L&lt;&#x2F;code&gt;, which hot-reloads all Lua scripts is immensely helpful for fast iteration.&lt;&#x2F;p&gt;
+&lt;p&gt;The resulting decoded protocol looks as follows:&lt;&#x2F;p&gt;
+&lt;figure&gt;
+    &lt;a href=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;misc&amp;#x2F;fingerprint-reversing&amp;#x2F;wireshark-decoded.png&quot; class=&quot;imglink&quot;&gt;
+        &lt;img src=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;processed_images&amp;#x2F;6248c2268d515c0100.png&quot; &#x2F;&gt;
+    &lt;&#x2F;a&gt;
+    
+    &lt;figcaption&gt;&lt;p&gt;Wireshark, Overview&lt;&#x2F;p&gt;
+&lt;&#x2F;figcaption&gt;
+    
+&lt;&#x2F;figure&gt;
+&lt;figure&gt;
+    &lt;a href=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;misc&amp;#x2F;fingerprint-reversing&amp;#x2F;wireshark-decoded2.png&quot; class=&quot;imglink&quot;&gt;
+        &lt;img src=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;processed_images&amp;#x2F;2b506f9dc3699da400.png&quot; &#x2F;&gt;
+    &lt;&#x2F;a&gt;
+    
+    &lt;figcaption&gt;&lt;p&gt;Wireshark, McuGetImage decoded&lt;&#x2F;p&gt;
+&lt;&#x2F;figcaption&gt;
+    
+&lt;&#x2F;figure&gt;
+&lt;p&gt;Wireshark is even able to show us information about the TLS packets. Unfortunately, it cannot decrypt TLS packets outside of a TCP stream, even if we provide the PSK. This is because TLS is stateful, and Wireshark needs to know which sequence of TLS packets belong together. But there is no API to provide this information, outside of a TCP stream, where packets are strictly ordered. As a workaround it is possible to send the data 1:1 over TCP, capture this in a separate pcap, enter the PSK key in the wireshark settings, and then decrypt it.
+This proved unnecessary though.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;debugging-initialization-changing-the-psk&quot;&gt;Debugging Initialization, changing the PSK&lt;&#x2F;h3&gt;
+&lt;p&gt;The WUDFHost process only spawns when the driver is needed, and then immediately runs the device initialization code, which makes debugging it more difficult. As this is a common problem when developing drivers, Windows provides a registry key do delay initialization until after a debugger is attached to WUDFHost (&lt;code&gt;HostProcessDbgBreakOnStart&lt;&#x2F;code&gt;, see &lt;a href=&quot;https:&#x2F;&#x2F;flylib.com&#x2F;books&#x2F;en&#x2F;3.141.1.164&#x2F;1&#x2F;&quot;&gt;How to Prepare for UMDF Debugging&lt;&#x2F;a&gt;). Using windbg this works fine, but with x64dbg the process exits early after attaching. I have no idea why that happens, please let me know if you have an idea.&lt;&#x2F;p&gt;
+&lt;p&gt;It seems the Goodix Devs had a similar problem, and implemented their own workaround: a debug registry key: &lt;code&gt;HKEY_LOCAL_MACHINE\SOFTWARE\Goodix\FP\DebugMe&lt;&#x2F;code&gt;. If this is set, the driver loops for a few minutes during initialization (in function &lt;code&gt;initThread&lt;&#x2F;code&gt;). This provides more than enough time to attach x64dbg. We can then use the debugger to break out of the loop. This is not the only registry key read, there are ~15. I have not looked into them yet, but one called &lt;code&gt;securityReviewSwitch&lt;&#x2F;code&gt; might we interesting to look at.&lt;&#x2F;p&gt;
+&lt;p&gt;This early attach enables us to get the log output of TLS intialization, and, more importantly, it enables us to interfere with it. The log shows that they are using TLS-PSK, a version of TLS that works without certificates. Instead, it uses a mutually known pre-shared-key (PSK). To talk to the sensor we need to know this PSK! THe windows driver obviously knows it, so we should be able to get a hold of it.&lt;&#x2F;p&gt;
+&lt;p&gt;In the log we find a crucial method: &lt;code&gt;ProcessPsk&lt;&#x2F;code&gt;. This is the method that checks&#x2F;sets the PSK key used by the TLS connection! Lets look at a log excerpt:&lt;&#x2F;p&gt;
+&lt;pre style=&quot;background-color:#1e1e1e;&quot;&gt;
+&lt;code&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;ProcessPsk          psk process...
+ProcessPsk          1.check psk if valid(total times:3)
+PresetPskIsValidR     1.get sgx[psk] from mcu
+PresetPskIsValidR     2.unseal sgx[psk] &amp;amp; cal the local_hash
+CalculatePmk            1.gen raw_pmk
+CalculatePmk            2.calculate pmk
+PresetPskIsValidR     3.get hmac of pmk from mcu
+PresetPskIsValidR     4.verify hmac of local and mcu
+ProcessPsk          psk is valid!
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;The driver reads two values from the sensor (mcu). First, an encrypted PSK. Contrary to the log messages, it is NOT sealed in an SGX enclave, but rather encrypted with windows&#x27;s &lt;code&gt;CryptProtectData&lt;&#x2F;code&gt;. This encrypts data to the currently logged in user. The laptop has an AMD processor, so SGX is not available. It might very well be that on Intel SGX is used.&lt;&#x2F;p&gt;
+&lt;p&gt;Secondly, the driver queries a hash of the PMK. The PMK (preshared master key) is the actual key used by TLS and is computed from the PSK. This way, the driver can verify that the decryption of the PSK was successful and both devices have the same PMK.&lt;&#x2F;p&gt;
+&lt;p&gt;Now the crucial question is: How does the fingerprint sensor get the PMK in the first place? It obviously needs it, unencrypted, to be able to establish a communication. To investigate this, I spun up a clean windows VM and observed the first connection ever between the driver and the device. This revealed crucial information:&lt;&#x2F;p&gt;
+&lt;pre style=&quot;background-color:#1e1e1e;&quot;&gt;
+&lt;code&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;ProcessPsk         psk process...
+...
+PresetPskIsValidR    2.unseal sgx[psk] &amp;amp; cal the local_hash&amp;quot;
+GfUnsealData           CryptUnprotectData failed, error: -2146893813
+...
+ProcessPsk         3.write psk to mcu(times:1)(total times:3)
+PresetPskWriteKey    0.generate random psk
+PresetPskWriteKey    1.seal psk by sgx
+PresetPskWriteKey    2.encrypt psk by wb
+PresetPskWriteKey    3.write to mcu
+ProcessPsk         4.write psk successfully ,check again
+PresetPskIsValidR      .....
+ProcessPsk         psk is valid!
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;AHA! The driver queries the encrypted PSK from the device. But it was encrypted with a different windows VM, so the &lt;code&gt;CryptUnprotectData&lt;&#x2F;code&gt; call fails! It then proceeds to generate a new, random, PSK and sends it to the device. This represents a trust-on-first-use security model. But I am not sure if there is any way for the user to detect a changed PSK if the driver just sends a new one...&lt;&#x2F;p&gt;
+&lt;p&gt;Our Linux driver should be able to do the same!
+But it seems Goodix is really worried about an attacker sniffing packets, and wanted to prevent a passive observer to sniff the PSK.
+As such, the PSK is not transmitted in the clear, but encrypted with a whitebox. &lt;&#x2F;p&gt;
+&lt;p&gt;Whitebox is an interesting field of cryptography. It is applied to symmetrical ciphers. That means encryption and decryption key are the same. The goal of a whitebox is to provide an encryption function to an adversary, which will NOT be able to get the key out of this box. As such, he will be unable to decrypt. This prevents passive sniffing.&lt;&#x2F;p&gt;
+&lt;p&gt;But we simply want to know one valid PSK - encrypted PSK pair and can therefore use the whitebox as-is, without needing the key.&lt;&#x2F;p&gt;
+&lt;p&gt;One way to do this, is to set a breakpoint in &lt;code&gt;PresetPskWriteKey&lt;&#x2F;code&gt;, and just change the PSK in memory right after it is generated and before it is encrypted.&lt;&#x2F;p&gt;
+&lt;figure&gt;
+    &lt;a href=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;misc&amp;#x2F;fingerprint-reversing&amp;#x2F;ghidra.png&quot; class=&quot;imglink&quot;&gt;
+        &lt;img src=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;processed_images&amp;#x2F;ae1a613a6ff41d6600.png&quot; &#x2F;&gt;
+    &lt;&#x2F;a&gt;
+    
+    &lt;figcaption&gt;&lt;p&gt;Ghidra. Decompilation of &lt;code&gt;PresetPskWriteKey&lt;&#x2F;code&gt;.&lt;&#x2F;p&gt;
+&lt;&#x2F;figcaption&gt;
+    
+&lt;&#x2F;figure&gt;
+&lt;p&gt;I provide an example plain-ciphertext pair for my device:&lt;&#x2F;p&gt;
+&lt;pre style=&quot;background-color:#1e1e1e;&quot;&gt;
+&lt;code class=&quot;language-python&quot; data-lang=&quot;python&quot;&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;PSK =      bytes.fromhex(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#d69d85;&quot;&gt;&amp;quot;0000000000000000000000000000000000000000000000000000000000000000&amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;)
+PSK_WB =   bytes.fromhex(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#d69d85;&quot;&gt;&amp;quot;ec35ae3abb45ed3f12c4751f1e5c2cc05b3c5452e9104d9f2a3118644f37a04b6fd66b1d97cf80f1345f76c84f03ff30bb51bf308f2a9875c41e6592cd2a2f9e60809b17b5316037b69bb2fa5d4c8ac31edb3394046ec06bbdacc57da6a756c5&amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;)
+PMK_HASH = bytes.fromhex(&lt;&#x2F;span&gt;&lt;span style=&quot;color:#d69d85;&quot;&gt;&amp;quot;81b8ff490612022a121a9449ee3aad2792f32b9f3141182cd01019945ee50361&amp;quot;&lt;&#x2F;span&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;)
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;Another way to get a valid, arbitrary &lt;code&gt;PSK - PSK_WB&lt;&#x2F;code&gt; pair is to break the whitebox, which in this case barely deserves its name. If you were able to follow up to here, I am sure you will be able to break it. This will nonetheless be left as an excercise for the reader, because Goodix might have good reasons to keep it a secret.&lt;&#x2F;p&gt;
+&lt;h3 id=&quot;some-notes-on-reversing-the-tls-functions&quot;&gt;Some notes on reversing the TLS functions&lt;&#x2F;h3&gt;
+&lt;p&gt;Looking at strings contained in the binary, I fairly quickly determined that it was using the mbedtls library. This was good to know, as mbedtls has a very wide range of distinct error codes for each function. For example, &lt;code&gt;-0x6380&lt;&#x2F;code&gt; is used in &lt;code&gt;mbedtls_cipher_update&lt;&#x2F;code&gt;, allowing to easily identify the function. This is likely something that can also be done by function signatures, but I did not need to know many functions and was to lazy to generate the signatures.&lt;&#x2F;p&gt;
+&lt;p&gt;The TLS library has its own logging, which is normally runtime disabled. I found the place where it is set, and used a breakpoint to set it to &lt;code&gt;trace&lt;&#x2F;code&gt; level.&lt;&#x2F;p&gt;
+&lt;h2 id=&quot;figuring-out-the-image-format&quot;&gt;Figuring out the Image Format&lt;&#x2F;h2&gt;
+&lt;p&gt;By writing our own PSK to the device, we are able to establish communication and receive an image.
+The decrypted image has substancially less entropy, so decryption is almost guaranteed to be correct. But a simple visualization still looks like noise with no fingerprint visible. We need to figure out how the image is encoded.&lt;&#x2F;p&gt;
+&lt;p&gt;From the initial research we know the sensor likely has a resolution of 54x176. To verify this, we can use the GIMP Raw Image dialog. It allows to easily modify the width and see a live result, which makes finding repeating patterns easy.&lt;&#x2F;p&gt;
+&lt;figure&gt;
+    &lt;a href=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;misc&amp;#x2F;fingerprint-reversing&amp;#x2F;gimp-raw-fp.png&quot; class=&quot;imglink&quot;&gt;
+        &lt;img src=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;processed_images&amp;#x2F;bba2233b868d52a200.png&quot; &#x2F;&gt;
+    &lt;&#x2F;a&gt;
+    
+    &lt;figcaption&gt;&lt;p&gt;Raw decrypted fingerprint image in GIMP. Note the repeating structure in the image -&amp;gt; Width is 84 bytes.&lt;&#x2F;p&gt;
+&lt;&#x2F;figcaption&gt;
+    
+&lt;&#x2F;figure&gt;
+&lt;p&gt;We could also have done this with a simple hex editor. The received image is 14788 bytes, and we see repeating zeroes every 84 bytes. This means that the final 4 bytes are extra and likely a checksum.&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;span class=&quot;katex-display&quot;&gt;&lt;span class=&quot;katex&quot;&gt;&lt;span class=&quot;katex-mathml&quot;&gt;&lt;math xmlns=&quot;http:&#x2F;&#x2F;www.w3.org&#x2F;1998&#x2F;Math&#x2F;MathML&quot; display=&quot;block&quot;&gt;&lt;semantics&gt;&lt;mrow&gt;&lt;mn&gt;176&lt;&#x2F;mn&gt;&lt;mo&gt;⋅&lt;&#x2F;mo&gt;&lt;mn&gt;84&lt;&#x2F;mn&gt;&lt;mo&gt;+&lt;&#x2F;mo&gt;&lt;mn&gt;4&lt;&#x2F;mn&gt;&lt;mo&gt;=&lt;&#x2F;mo&gt;&lt;mn&gt;14788&lt;&#x2F;mn&gt;&lt;&#x2F;mrow&gt;&lt;annotation encoding=&quot;application&#x2F;x-tex&quot;&gt;
+176 \cdot 84 + 4 = 14788&lt;&#x2F;annotation&gt;&lt;&#x2F;semantics&gt;&lt;&#x2F;math&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;katex-html&quot; aria-hidden=&quot;true&quot;&gt;&lt;span class=&quot;base&quot;&gt;&lt;span class=&quot;strut&quot; style=&quot;height:0.64444em;vertical-align:0em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;1&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;7&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;6&lt;&#x2F;span&gt;&lt;span class=&quot;mspace&quot; style=&quot;margin-right:0.2222222222222222em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mbin&quot;&gt;⋅&lt;&#x2F;span&gt;&lt;span class=&quot;mspace&quot; style=&quot;margin-right:0.2222222222222222em;&quot;&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;base&quot;&gt;&lt;span class=&quot;strut&quot; style=&quot;height:0.72777em;vertical-align:-0.08333em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;8&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;4&lt;&#x2F;span&gt;&lt;span class=&quot;mspace&quot; style=&quot;margin-right:0.2222222222222222em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mbin&quot;&gt;+&lt;&#x2F;span&gt;&lt;span class=&quot;mspace&quot; style=&quot;margin-right:0.2222222222222222em;&quot;&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;base&quot;&gt;&lt;span class=&quot;strut&quot; style=&quot;height:0.64444em;vertical-align:0em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;4&lt;&#x2F;span&gt;&lt;span class=&quot;mspace&quot; style=&quot;margin-right:0.2777777777777778em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mrel&quot;&gt;=&lt;&#x2F;span&gt;&lt;span class=&quot;mspace&quot; style=&quot;margin-right:0.2777777777777778em;&quot;&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;base&quot;&gt;&lt;span class=&quot;strut&quot; style=&quot;height:0.64444em;vertical-align:0em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;1&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;4&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;7&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;8&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;8&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;p&gt;
+&lt;p&gt;The row count of 176 matches. Each contains 84 bytes, which we expect to be 54 pixels. This matches if each pixel is 12 bits in depth, as &lt;span class=&quot;katex&quot;&gt;&lt;span class=&quot;katex-mathml&quot;&gt;&lt;math xmlns=&quot;http:&#x2F;&#x2F;www.w3.org&#x2F;1998&#x2F;Math&#x2F;MathML&quot;&gt;&lt;semantics&gt;&lt;mrow&gt;&lt;mn&gt;84&lt;&#x2F;mn&gt;&lt;mo&gt;⋅&lt;&#x2F;mo&gt;&lt;mn&gt;8&lt;&#x2F;mn&gt;&lt;mi mathvariant=&quot;normal&quot;&gt;&#x2F;&lt;&#x2F;mi&gt;&lt;mn&gt;12&lt;&#x2F;mn&gt;&lt;mo&gt;=&lt;&#x2F;mo&gt;&lt;mn&gt;54&lt;&#x2F;mn&gt;&lt;&#x2F;mrow&gt;&lt;annotation encoding=&quot;application&#x2F;x-tex&quot;&gt;84 \cdot 8&#x2F;12 = 54&lt;&#x2F;annotation&gt;&lt;&#x2F;semantics&gt;&lt;&#x2F;math&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;katex-html&quot; aria-hidden=&quot;true&quot;&gt;&lt;span class=&quot;base&quot;&gt;&lt;span class=&quot;strut&quot; style=&quot;height:0.64444em;vertical-align:0em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;8&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;4&lt;&#x2F;span&gt;&lt;span class=&quot;mspace&quot; style=&quot;margin-right:0.2222222222222222em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mbin&quot;&gt;⋅&lt;&#x2F;span&gt;&lt;span class=&quot;mspace&quot; style=&quot;margin-right:0.2222222222222222em;&quot;&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;base&quot;&gt;&lt;span class=&quot;strut&quot; style=&quot;height:1em;vertical-align:-0.25em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;8&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;&#x2F;&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;1&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;2&lt;&#x2F;span&gt;&lt;span class=&quot;mspace&quot; style=&quot;margin-right:0.2777777777777778em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mrel&quot;&gt;=&lt;&#x2F;span&gt;&lt;span class=&quot;mspace&quot; style=&quot;margin-right:0.2777777777777778em;&quot;&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;base&quot;&gt;&lt;span class=&quot;strut&quot; style=&quot;height:0.64444em;vertical-align:0em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;5&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;4&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;.&lt;&#x2F;p&gt;
+&lt;p&gt;Figuring out how the bits are packed required further reverse engineering of the code, which revealed a quite curious method: Every four pixels are packed into 6 bytes, according to the following pattern:&lt;&#x2F;p&gt;
+&lt;pre style=&quot;background-color:#1e1e1e;&quot;&gt;
+&lt;code&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;6 input bytes:   01 23 45 67 89 ab
+unpack to
+  0x123
+  0x670
+  0xb45
+  0x89a
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;YAY! Finally a decoded image!&lt;&#x2F;p&gt;
+&lt;figure&gt;
+    &lt;a href=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;misc&amp;#x2F;fingerprint-reversing&amp;#x2F;empty_fingerprint.png&quot; class=&quot;imglink&quot;&gt;
+        &lt;img src=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;processed_images&amp;#x2F;5972f4518a123f1e00.png&quot; &#x2F;&gt;
+    &lt;&#x2F;a&gt;
+    
+    &lt;figcaption&gt;&lt;p&gt;Empty Fingerprint image. There are some vertical lines, which are present in every image and could be calibrated for.&lt;&#x2F;p&gt;
+&lt;&#x2F;figcaption&gt;
+    
+&lt;&#x2F;figure&gt;
+&lt;h2 id=&quot;creating-a-python-driver-poc&quot;&gt;Creating a Python Driver PoC&lt;&#x2F;h2&gt;
+&lt;p&gt;I have written a first proof-of-concept driver in python: &lt;a href=&quot;https:&#x2F;&#x2F;github.com&#x2F;tlambertz&#x2F;goodix-fingerprint-reversing&#x2F;blob&#x2F;main&#x2F;capture.py&quot;&gt;capture.py&lt;&#x2F;a&gt;.&lt;&#x2F;p&gt;
+&lt;p&gt;It connects to the device, changes the PSK to all zero if needed, sets up a TLS connection and waits for the finger to be placed on the device and requests an image.
+As TLS is only specced to be used via TCP, all python libraries I found expect a socket to interact with. DTLS, which is intended to be wrapped in other protocols, is slightly different and thus incompatible.&lt;&#x2F;p&gt;
+&lt;p&gt;To work around this, I simply open my own socket and proxy the TLS communication through it. This also enables wireshark to sniff the interface and decrypt all traffic, which might be helpful when debugging.&lt;&#x2F;p&gt;
+&lt;p&gt;As a simple TLS server I opted for the &lt;code&gt;openssl&lt;&#x2F;code&gt; included one: &lt;&#x2F;p&gt;
+&lt;pre style=&quot;background-color:#1e1e1e;&quot;&gt;
+&lt;code class=&quot;language-sh&quot; data-lang=&quot;sh&quot;&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;openssl s_server -nocert -psk 0000000000000000000000000000000000000000000000000000000000000000 -port 4433 -quiet
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;p&gt;To plot the image I use pyplot. The maximum framerate I was able to get from the sensor was 16 FPS:&lt;&#x2F;p&gt;
+&lt;figure&gt;
+    &lt;a href=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;misc&amp;#x2F;fingerprint-reversing&amp;#x2F;fingerprint_scan.gif&quot; class=&quot;imglink&quot;&gt;
+        &lt;img src=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;misc&amp;#x2F;fingerprint-reversing&amp;#x2F;fingerprint_scan.gif&quot; &#x2F;&gt;
+    &lt;&#x2F;a&gt;
+    
+    &lt;figcaption&gt;&lt;p&gt;Scan of not-my-finger.&lt;&#x2F;p&gt;
+&lt;&#x2F;figcaption&gt;
+    
+&lt;&#x2F;figure&gt;
+&lt;h2 id=&quot;future&quot;&gt;Future&lt;&#x2F;h2&gt;
+&lt;p&gt;For the Sensor to be actually useful (like unlocking your laptop), libfprint support is required. I have briefly looked into adding support myself, but was turned off by their use of object oriented C. There also would be the need to integrate some TLS library into libfprint. I might come back to this in the future though.&lt;&#x2F;p&gt;
+&lt;p&gt;In the meantime, there is a new &lt;a href=&quot;https:&#x2F;&#x2F;discord.gg&#x2F;6xZ6k34Vqg&quot;&gt;Discord server&lt;&#x2F;a&gt;, where many owners of goodix devices have gathered to work on a unified driver. It seems every goodix scanner type is slightly different. As of 27&#x2F;05&#x2F;2021, images were extracted from 4 out of 11 models.&lt;&#x2F;p&gt;
+&lt;p&gt;Feel free to join as well, if to contribute or just to lurk :)&lt;&#x2F;p&gt;
+</content>
+	</entry>
+	<entry xml:lang="en">
+		<title>TEST PAGE</title>
+		<published>2021-03-30T00:00:00+00:00</published>
+		<updated>2021-03-30T00:00:00+00:00</updated>
+		<link href="https://blog.th0m.as/test/" type="text/html"/>
+		<id>https://blog.th0m.as/test/</id>
+		<content type="html">&lt;h1 id=&quot;heading1&quot;&gt;Heading1&lt;&#x2F;h1&gt;
+&lt;h2 id=&quot;heading2&quot;&gt;Heading2&lt;&#x2F;h2&gt;
+&lt;h3 id=&quot;heading3&quot;&gt;Heading3&lt;&#x2F;h3&gt;
+&lt;h4 id=&quot;heading4&quot;&gt;Heading4&lt;&#x2F;h4&gt;
+&lt;pre style=&quot;background-color:#1e1e1e;&quot;&gt;
+&lt;code class=&quot;language-rust&quot; data-lang=&quot;rust&quot;&gt;&lt;span style=&quot;color:#608b4e;&quot;&gt;&#x2F;&#x2F; comment
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#569cd6;&quot;&gt;pub fn &lt;&#x2F;span&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;test(a: &lt;&#x2F;span&gt;&lt;span style=&quot;color:#569cd6;&quot;&gt;u64&lt;&#x2F;span&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;) -&amp;gt; &lt;&#x2F;span&gt;&lt;span style=&quot;color:#569cd6;&quot;&gt;bool &lt;&#x2F;span&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;{
+    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#569cd6;&quot;&gt;return false&lt;&#x2F;span&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;;
+}
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;blockquote&gt;
+&lt;p&gt;this is some quoted text! test&lt;&#x2F;p&gt;
+&lt;&#x2F;blockquote&gt;
+&lt;p&gt;&lt;span class=&quot;katex-display&quot;&gt;&lt;span class=&quot;katex&quot;&gt;&lt;span class=&quot;katex-mathml&quot;&gt;&lt;math xmlns=&quot;http:&#x2F;&#x2F;www.w3.org&#x2F;1998&#x2F;Math&#x2F;MathML&quot; display=&quot;block&quot;&gt;&lt;semantics&gt;&lt;mrow&gt;&lt;mi&gt;f&lt;&#x2F;mi&gt;&lt;mo stretchy=&quot;false&quot;&gt;(&lt;&#x2F;mo&gt;&lt;mi&gt;x&lt;&#x2F;mi&gt;&lt;mo stretchy=&quot;false&quot;&gt;)&lt;&#x2F;mo&gt;&lt;mo&gt;=&lt;&#x2F;mo&gt;&lt;msubsup&gt;&lt;mo&gt;∫&lt;&#x2F;mo&gt;&lt;mrow&gt;&lt;mo&gt;−&lt;&#x2F;mo&gt;&lt;mi mathvariant=&quot;normal&quot;&gt;∞&lt;&#x2F;mi&gt;&lt;&#x2F;mrow&gt;&lt;mi mathvariant=&quot;normal&quot;&gt;∞&lt;&#x2F;mi&gt;&lt;&#x2F;msubsup&gt;&lt;mi&gt;f&lt;&#x2F;mi&gt;&lt;mover accent=&quot;true&quot;&gt;&lt;mo stretchy=&quot;false&quot;&gt;(&lt;&#x2F;mo&gt;&lt;mo&gt;^&lt;&#x2F;mo&gt;&lt;&#x2F;mover&gt;&lt;mi&gt;ξ&lt;&#x2F;mi&gt;&lt;mo stretchy=&quot;false&quot;&gt;)&lt;&#x2F;mo&gt;&lt;mtext&gt; &lt;&#x2F;mtext&gt;&lt;msup&gt;&lt;mi&gt;e&lt;&#x2F;mi&gt;&lt;mrow&gt;&lt;mn&gt;2&lt;&#x2F;mn&gt;&lt;mi&gt;π&lt;&#x2F;mi&gt;&lt;mi&gt;i&lt;&#x2F;mi&gt;&lt;mi&gt;ξ&lt;&#x2F;mi&gt;&lt;mi&gt;x&lt;&#x2F;mi&gt;&lt;&#x2F;mrow&gt;&lt;&#x2F;msup&gt;&lt;mtext&gt; &lt;&#x2F;mtext&gt;&lt;mi&gt;d&lt;&#x2F;mi&gt;&lt;mi&gt;ξ&lt;&#x2F;mi&gt;&lt;&#x2F;mrow&gt;&lt;annotation encoding=&quot;application&#x2F;x-tex&quot;&gt;
+f(\relax{x}) = \int_{-\infty}^\infty
+f\hat(\xi),e^{2 \pi i \xi x}
+,d\xi&lt;&#x2F;annotation&gt;&lt;&#x2F;semantics&gt;&lt;&#x2F;math&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;katex-html&quot; aria-hidden=&quot;true&quot;&gt;&lt;span class=&quot;base&quot;&gt;&lt;span class=&quot;strut&quot; style=&quot;height:1em;vertical-align:-0.25em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mord mathnormal&quot; style=&quot;margin-right:0.10764em;&quot;&gt;f&lt;&#x2F;span&gt;&lt;span class=&quot;mopen&quot;&gt;(&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;&lt;span class=&quot;mord mathnormal&quot;&gt;x&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mclose&quot;&gt;)&lt;&#x2F;span&gt;&lt;span class=&quot;mspace&quot; style=&quot;margin-right:0.2777777777777778em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mrel&quot;&gt;=&lt;&#x2F;span&gt;&lt;span class=&quot;mspace&quot; style=&quot;margin-right:0.2777777777777778em;&quot;&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;base&quot;&gt;&lt;span class=&quot;strut&quot; style=&quot;height:2.384573em;vertical-align:-0.970281em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mop&quot;&gt;&lt;span class=&quot;mop op-symbol large-op&quot; style=&quot;margin-right:0.44445em;position:relative;top:-0.0011249999999999316em;&quot;&gt;∫&lt;&#x2F;span&gt;&lt;span class=&quot;msupsub&quot;&gt;&lt;span class=&quot;vlist-t vlist-t2&quot;&gt;&lt;span class=&quot;vlist-r&quot;&gt;&lt;span class=&quot;vlist&quot; style=&quot;height:1.414292em;&quot;&gt;&lt;span style=&quot;top:-1.7880500000000001em;margin-left:-0.44445em;margin-right:0.05em;&quot;&gt;&lt;span class=&quot;pstrut&quot; style=&quot;height:2.7em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;sizing reset-size6 size3 mtight&quot;&gt;&lt;span class=&quot;mord mtight&quot;&gt;&lt;span class=&quot;mord mtight&quot;&gt;−&lt;&#x2F;span&gt;&lt;span class=&quot;mord mtight&quot;&gt;∞&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;span style=&quot;top:-3.8129000000000004em;margin-right:0.05em;&quot;&gt;&lt;span class=&quot;pstrut&quot; style=&quot;height:2.7em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;sizing reset-size6 size3 mtight&quot;&gt;&lt;span class=&quot;mord mtight&quot;&gt;∞&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;vlist-s&quot;&gt;​&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;vlist-r&quot;&gt;&lt;span class=&quot;vlist&quot; style=&quot;height:0.970281em;&quot;&gt;&lt;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mspace&quot; style=&quot;margin-right:0.16666666666666666em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mord mathnormal&quot; style=&quot;margin-right:0.10764em;&quot;&gt;f&lt;&#x2F;span&gt;&lt;span class=&quot;mord accent&quot;&gt;&lt;span class=&quot;vlist-t vlist-t2&quot;&gt;&lt;span class=&quot;vlist-r&quot;&gt;&lt;span class=&quot;vlist&quot; style=&quot;height:1.01344em;&quot;&gt;&lt;span style=&quot;top:-3em;&quot;&gt;&lt;span class=&quot;pstrut&quot; style=&quot;height:3em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mopen&quot;&gt;(&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;span style=&quot;top:-3.319em;&quot;&gt;&lt;span class=&quot;pstrut&quot; style=&quot;height:3em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;accent-body&quot; style=&quot;left:-0.25em;&quot;&gt;&lt;span class=&quot;mord&quot;&gt;^&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;vlist-s&quot;&gt;​&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;vlist-r&quot;&gt;&lt;span class=&quot;vlist&quot; style=&quot;height:0.25em;&quot;&gt;&lt;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mord mathnormal&quot; style=&quot;margin-right:0.04601em;&quot;&gt;ξ&lt;&#x2F;span&gt;&lt;span class=&quot;mclose&quot;&gt;)&lt;&#x2F;span&gt;&lt;span class=&quot;mspace&quot; style=&quot;margin-right:0.16666666666666666em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mord&quot;&gt;&lt;span class=&quot;mord mathnormal&quot;&gt;e&lt;&#x2F;span&gt;&lt;span class=&quot;msupsub&quot;&gt;&lt;span class=&quot;vlist-t&quot;&gt;&lt;span class=&quot;vlist-r&quot;&gt;&lt;span class=&quot;vlist&quot; style=&quot;height:0.8991079999999999em;&quot;&gt;&lt;span style=&quot;top:-3.1130000000000004em;margin-right:0.05em;&quot;&gt;&lt;span class=&quot;pstrut&quot; style=&quot;height:2.7em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;sizing reset-size6 size3 mtight&quot;&gt;&lt;span class=&quot;mord mtight&quot;&gt;&lt;span class=&quot;mord mtight&quot;&gt;2&lt;&#x2F;span&gt;&lt;span class=&quot;mord mathnormal mtight&quot; style=&quot;margin-right:0.03588em;&quot;&gt;π&lt;&#x2F;span&gt;&lt;span class=&quot;mord mathnormal mtight&quot;&gt;i&lt;&#x2F;span&gt;&lt;span class=&quot;mord mathnormal mtight&quot; style=&quot;margin-right:0.04601em;&quot;&gt;ξ&lt;&#x2F;span&gt;&lt;span class=&quot;mord mathnormal mtight&quot;&gt;x&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mspace&quot; style=&quot;margin-right:0.16666666666666666em;&quot;&gt;&lt;&#x2F;span&gt;&lt;span class=&quot;mord mathnormal&quot;&gt;d&lt;&#x2F;span&gt;&lt;span class=&quot;mord mathnormal&quot; style=&quot;margin-right:0.04601em;&quot;&gt;ξ&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;span&gt;&lt;&#x2F;p&gt;
+&lt;pre style=&quot;background-color:#1e1e1e;&quot;&gt;
+&lt;code class=&quot;language-py&quot; data-lang=&quot;py&quot;&gt;&lt;span style=&quot;color:#608b4e;&quot;&gt;# test
+&lt;&#x2F;span&gt;&lt;span style=&quot;color:#569cd6;&quot;&gt;def &lt;&#x2F;span&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;test(a):
+    &lt;&#x2F;span&gt;&lt;span style=&quot;color:#569cd6;&quot;&gt;return &lt;&#x2F;span&gt;&lt;span style=&quot;color:#dcdcdc;&quot;&gt;sum(a)
+
+&lt;&#x2F;span&gt;&lt;&#x2F;code&gt;&lt;&#x2F;pre&gt;
+&lt;blockquote&gt;
+&lt;p&gt;some
+more
+quoted text!&lt;&#x2F;p&gt;
+&lt;p&gt;with empty lines&lt;&#x2F;p&gt;
+&lt;&#x2F;blockquote&gt;
+&lt;p&gt;this is &lt;code&gt;some&lt;&#x2F;code&gt; text with &lt;code&gt;inline&lt;&#x2F;code&gt; code.&lt;&#x2F;p&gt;
+&lt;ol&gt;
+&lt;li&gt;first item&lt;&#x2F;li&gt;
+&lt;li&gt;second item
+&lt;ul&gt;
+&lt;li&gt;sub item&lt;&#x2F;li&gt;
+&lt;li&gt;sub item&lt;&#x2F;li&gt;
+&lt;li&gt;sub item&lt;&#x2F;li&gt;
+&lt;&#x2F;ul&gt;
+&lt;&#x2F;li&gt;
+&lt;&#x2F;ol&gt;
+&lt;p&gt;&lt;a href=&quot;https:&#x2F;&#x2F;news.ycombinator.com&quot;&gt;A wild external link appears!&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;test&#x2F;&quot;&gt;internal link&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;p&gt;&lt;a href=&quot;https:&#x2F;&#x2F;blog.th0m.as&#x2F;test&#x2F;#heading3&quot;&gt;Link to heading 3&lt;&#x2F;a&gt;&lt;&#x2F;p&gt;
+&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;Tables&lt;&#x2F;th&gt;&lt;th align=&quot;center&quot;&gt;Are&lt;&#x2F;th&gt;&lt;th align=&quot;right&quot;&gt;Cool&lt;&#x2F;th&gt;&lt;&#x2F;tr&gt;&lt;&#x2F;thead&gt;&lt;tbody&gt;
+&lt;tr&gt;&lt;td&gt;col 3 is&lt;&#x2F;td&gt;&lt;td align=&quot;center&quot;&gt;right-aligned&lt;&#x2F;td&gt;&lt;td align=&quot;right&quot;&gt;$1600&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;col 2 is&lt;&#x2F;td&gt;&lt;td align=&quot;center&quot;&gt;centered&lt;&#x2F;td&gt;&lt;td align=&quot;right&quot;&gt;$12&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;tr&gt;&lt;td&gt;zebra stripes&lt;&#x2F;td&gt;&lt;td align=&quot;center&quot;&gt;are neat&lt;&#x2F;td&gt;&lt;td align=&quot;right&quot;&gt;$1&lt;&#x2F;td&gt;&lt;&#x2F;tr&gt;
+&lt;&#x2F;tbody&gt;&lt;&#x2F;table&gt;
+&lt;hr &#x2F;&gt;
+&lt;p&gt;horizontal rules&lt;&#x2F;p&gt;
+&lt;hr &#x2F;&gt;
+&lt;p&gt;Some text before an image.&lt;&#x2F;p&gt;
+&lt;figure&gt;
+    &lt;a href=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;test&amp;#x2F;Lena.png&quot; class=&quot;imglink&quot;&gt;
+        &lt;img src=&quot;https:&amp;#x2F;&amp;#x2F;blog.th0m.as&amp;#x2F;processed_images&amp;#x2F;c1ec4f71968dd9ce00.png&quot; &#x2F;&gt;
+    &lt;&#x2F;a&gt;
+    
+    &lt;figcaption&gt;&lt;p&gt;Image caption.
+&lt;a href=&quot;https:&#x2F;&#x2F;en.wikipedia.org&#x2F;wiki&#x2F;Lenna&quot;&gt;Lena&lt;&#x2F;a&gt;.&lt;&#x2F;p&gt;
+&lt;&#x2F;figcaption&gt;
+    
+&lt;&#x2F;figure&gt;
+&lt;p&gt;Normal Paragraph after image.&lt;&#x2F;p&gt;
+</content>
+	</entry>
+	<entry xml:lang="en">
+		<title>About</title>
+		<published>2020-01-01T00:00:00+00:00</published>
+		<updated>2020-01-01T00:00:00+00:00</updated>
+		<link href="https://blog.th0m.as/about/" type="text/html"/>
+		<id>https://blog.th0m.as/about/</id>
+		<content type="html">&lt;p&gt;WIP.&lt;&#x2F;p&gt;
+&lt;p&gt;My blog. Me: Thomas Lambertz, aka Th0mas. Member of &lt;a href=&quot;https:&#x2F;&#x2F;ctftime.org&#x2F;team&#x2F;18419&quot;&gt;ALLES!&lt;&#x2F;a&gt;. Likes to reverse hardware n stuff.&lt;&#x2F;p&gt;
+</content>
+	</entry>
+</feed>

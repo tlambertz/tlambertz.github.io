@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://blog.th0m.as/sitemap.xml
